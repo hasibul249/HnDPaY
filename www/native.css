@@ -1,0 +1,14 @@
+html,body{overscroll-behavior:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+body{-webkit-user-select:none;user-select:none}
+input,textarea{-webkit-user-select:text;user-select:text}
+.ro,.lc,.cd,.rf2,.cr2,.sw,.pill,.wlt,.wb,.cc{transition:transform .2s cubic-bezier(.3,.9,.3,1),background-color .2s}
+.ro:active,.lc:active,.cd:active,.rf2:active,.cr2:active,.sw:active,.pill:active,.wlt:active,.wb:active{transform:scale(.97)}
+#nav button:active{transform:scale(.9)}
+.tr{transition:background-color .2s}.tr:active{background:var(--g2)}
+.upd{padding:6px 22px 24px;text-align:center}
+.upd .lg2{display:grid;place-items:center;margin:8px 0 10px;animation:pu 1.1s ease-in-out infinite alternate}
+.upd h4{margin:0 0 4px;font-size:18px;font-weight:600}
+.upd p{margin:0 0 14px;color:var(--mu);font-size:13px;white-space:pre-line;max-height:90px;overflow:auto}
+.pbar{height:6px;background:var(--g1);border-radius:3px;overflow:hidden;margin:6px 0 8px}
+.pbar i{display:block;height:100%;width:0;background:var(--red);border-radius:3px;transition:width .3s}
+.upd .two{margin:10px 0 0}
