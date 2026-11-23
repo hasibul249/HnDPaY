@@ -13,28 +13,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  prepare:
+    name: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unzip project if uploaded as a zip
+      - name: Unzip uploaded zip into the repo
         run: |
           set -e
-          ZIP=$(ls -t ./*.zip 2>/dev/null | head -1 || true)
-          if [ -n "$ZIP" ]; then
-            echo "Found $ZIP, extracting..."
-            rm -rf _src && mkdir _src
-            unzip -q -o "$ZIP" -d _src
-            if [ ! -f _src/package.json ]; then
-              INNER=$(find _src -maxdepth 2 -name package.json | head -1 | xargs -r dirname)
-              [ -n "$INNER" ] || { echo "package.json not found inside zip"; exit 1; }
-              cp -a "$INNER"/. .
-            else
-              cp -a _src/. .
-            fi
-            rm -rf _src
+          shopt -s nullglob
+          FILES=(./*.zip)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No zip found - using repo files as they are"
+            exit 0
           fi
+          NAMES=""
+          while IFS= read -r Z; do
+            echo "Unzipping $Z"
+            T=$(mktemp -d)
+            unzip -q -o "$Z" -d "$T"
+            rm -rf "$T/__MACOSX"
+            P=$(find "$T" -maxdepth 3 -name package.json -not -path '*/node_modules/*' | head -1)
+            if [ -n "$P" ]; then SRC=$(dirname "$P"); else SRC="$T"; fi
+            rm -rf "$SRC/.git" "$SRC/.github"
+            for d in www native scripts assets; do
+              if [ -d "$SRC/$d" ]; then rm -rf "./$d"; fi
+            done
+            cp -a "$SRC"/. .
+            rm -f "$Z"
+            NAMES="$NAMES $(basename "$Z")"
+          done < <(for Z in "${FILES[@]}"; do echo "$(git log -1 --format=%ct -- "$Z") $Z"; done | sort -n | cut -d' ' -f2-)
+          git config user.name "unzip"
+          git config user.email "unzip@users.noreply.github.com"
+          git add -A
+          git commit -m "Unzip:$NAMES" || echo "Nothing to commit"
+          git push
+
+  apk:
+    name: apk
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Check required files
+        run: |
           for f in package.json capacitor.config.json VERSION www/index.html www/config.js scripts/patch-android.mjs keystore/hndpay.jks; do
             [ -f "$f" ] || { echo "MISSING FILE: $f"; exit 1; }
           done
@@ -48,9 +76,12 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Compute version (VERSION file + run number)
+      - name: Compute version
+        id: ver
         run: |
-          echo "APP_VERSION=$(tr -d ' \r\n' < VERSION).${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          V="$(tr -d ' \r\n' < VERSION).${GITHUB_RUN_NUMBER}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
           echo "APP_CODE=${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
 
       - name: Point updater at this repo
@@ -83,11 +114,26 @@ jobs:
           "$BT/apksigner" sign --ks ks.jks --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --ks-key-alias "$ALIAS" --out HnDPaY.apk aligned.apk
           "$BT/apksigner" verify HnDPaY.apk
 
-      - name: Publish release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HnDPaY-APK
+          path: HnDPaY.apk
+
+  ota:
+    name: ota
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: HnDPaY-APK
+
+      - name: Publish release (app auto-update source)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.APP_VERSION }}
-          name: HnDPaY ${{ env.APP_VERSION }}
+          tag_name: v${{ needs.apk.outputs.version }}
+          target_commitish: ${{ github.ref_name }}
+          name: HnDPaY ${{ needs.apk.outputs.version }}
           body: ${{ github.event.head_commit.message || 'Manual build' }}
           files: HnDPaY.apk
           make_latest: true
