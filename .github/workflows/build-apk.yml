@@ -18,6 +18,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Unzip project if uploaded as a zip
+        run: |
+          set -e
+          ZIP=$(ls -t ./*.zip 2>/dev/null | head -1 || true)
+          if [ -n "$ZIP" ]; then
+            echo "Found $ZIP, extracting..."
+            rm -rf _src && mkdir _src
+            unzip -q -o "$ZIP" -d _src
+            if [ ! -f _src/package.json ]; then
+              INNER=$(find _src -maxdepth 2 -name package.json | head -1 | xargs -r dirname)
+              [ -n "$INNER" ] || { echo "package.json not found inside zip"; exit 1; }
+              cp -a "$INNER"/. .
+            else
+              cp -a _src/. .
+            fi
+            rm -rf _src
+          fi
+          for f in package.json capacitor.config.json VERSION www/index.html www/config.js scripts/patch-android.mjs keystore/hndpay.jks; do
+            [ -f "$f" ] || { echo "MISSING FILE: $f"; exit 1; }
+          done
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
